@@ -21,13 +21,14 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 
 MONGO_URI = os.environ.get('MONGO_URI')
-if not MONGO_URI:
-    logger.warning("MONGO_URI not found in environment variables. Using localhost default.")
-    MONGO_URI = 'mongodb://localhost:27017/'
+if not MONGO_URI or "localhost" in MONGO_URI:
+    # Fallback to the provided Atlas URL if the env var is missing or incorrect
+    MONGO_URI = "mongodb+srv://HabitT:password%40123@cluster0.cphib7s.mongodb.net/habit_tracker_db?retryWrites=true&w=majority"
+    logger.info("Using hardcoded MongoDB fallback URL")
 
 db_connected = False
 try:
-    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10000)
     db = client['habit_tracker_db']
     habits_collection = db['habits']
     users_collection = db['users']
@@ -46,10 +47,10 @@ def serialize_doc(doc):
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    return jsonify({"status": "healthy", "database": "connected" if client.server_info() else "disconnected"}), 200
+    return jsonify({"status": "healthy", "database": "connected" if db_connected else "disconnected"}), 200
 
 def get_or_create_user(username):
-    if not username:
+    if not username or username == "null" or username == "undefined":
         username = "default_user"
     user = users_collection.find_one({"user_name": username})
     if not user:
@@ -134,8 +135,14 @@ def add_habits_entry():
         data = request.json
         logger.info(f"Received request to add habit: {data}")
         
-        user_name = data.get('user_name', 'default_user')
-        date_str = data.get('date', datetime.now().strftime('%Y-%m-%d'))
+        user_name = data.get('user_name')
+        if not user_name or user_name == "null":
+             user_name = "default_user"
+             
+        date_str = data.get('date')
+        if not date_str or date_str == "null":
+             date_str = datetime.now().strftime('%Y-%m-%d')
+             
         habits_list = data.get('habits', [])
 
         if not habits_list:
