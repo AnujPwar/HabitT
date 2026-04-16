@@ -6,24 +6,46 @@ from datetime import datetime, timedelta
 from bson import ObjectId
 from dotenv import load_dotenv
 
+import logging
+
+# Configure Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 load_dotenv() # Load variables from .env
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
-CORS(app)
+CORS(app) # Allow all origins for now
 
-MONGO_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/')
-client = MongoClient(MONGO_URI)
-db = client['habit_tracker_db']
-habits_collection = db['habits']
-users_collection = db['users']
+MONGO_URI = os.environ.get('MONGO_URI')
+if not MONGO_URI:
+    logger.warning("MONGO_URI not found in environment variables. Using localhost default.")
+    MONGO_URI = 'mongodb://localhost:27017/'
+
+try:
+    client = MongoClient(MONGO_URI)
+    db = client['habit_tracker_db']
+    habits_collection = db['habits']
+    users_collection = db['users']
+    # Trigger a connection check
+    client.server_info()
+    logger.info("Successfully connected to MongoDB")
+except Exception as e:
+    logger.error(f"Could not connect to MongoDB: {e}")
 
 def serialize_doc(doc):
     if doc and '_id' in doc:
         doc['_id'] = str(doc['_id'])
     return doc
 
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "healthy", "database": "connected" if client.server_info() else "disconnected"}), 200
+
 def get_or_create_user(username):
+    if not username:
+        username = "default_user"
     user = users_collection.find_one({"user_name": username})
     if not user:
         user = {
@@ -101,39 +123,50 @@ def sync_user():
 
 @app.route('/api/habits', methods=['POST'])
 def add_habits_entry():
-    data = request.json
-    user_name = data.get('user_name', 'default_user')
-    date_str = data.get('date', datetime.now().strftime('%Y-%m-%d'))
-    habits_list = data.get('habits', [])
+    try:
+        data = request.json
+        logger.info(f"Received request to add habit: {data}")
+        
+        user_name = data.get('user_name', 'default_user')
+        date_str = data.get('date', datetime.now().strftime('%Y-%m-%d'))
+        habits_list = data.get('habits', [])
 
-    formatted_habits = []
-    for h in habits_list:
-        formatted_habits.append({
-            "habit_name": h if isinstance(h, str) else h.get('name', ''),
-            "status": "Not Done",
-            "created_at": datetime.now().isoformat(),
-            "photos": []
-        })
-    
-    existing = habits_collection.find_one({"user_name": user_name, "date": date_str})
-    if existing:
-        habits_collection.update_one(
-            {"_id": existing["_id"]},
-            {"$push": {"habits": {"$each": formatted_habits}}}
-        )
-        return jsonify({"message": "Habits appended"}), 200
-    
-    entry = {
-        "user_name": user_name,
-        "date": date_str,
-        "habits": formatted_habits,
-        "total_habits": len(formatted_habits),
-        "completed_count": 0,
-        "completion_percentage": 0.0
-    }
-    result = habits_collection.insert_one(entry)
-    entry['_id'] = str(result.inserted_id)
-    return jsonify({"message": "Habits entry created", "entry": entry}), 201
+        if not habits_list:
+             return jsonify({"error": "Habit list is empty"}), 400
+
+        formatted_habits = []
+        for h in habits_list:
+            formatted_habits.append({
+                "habit_name": h if isinstance(h, str) else h.get('name', ''),
+                "status": "Not Done",
+                "created_at": datetime.now().isoformat(),
+                "photos": []
+            })
+        
+        existing = habits_collection.find_one({"user_name": user_name, "date": date_str})
+        if existing:
+            habits_collection.update_one(
+                {"_id": existing["_id"]},
+                {"$push": {"habits": {"$each": formatted_habits}}}
+            )
+            logger.info(f"Appended habits to existing entry for {user_name} on {date_str}")
+            return jsonify({"message": "Habits appended"}), 200
+        
+        entry = {
+            "user_name": user_name,
+            "date": date_str,
+            "habits": formatted_habits,
+            "total_habits": len(formatted_habits),
+            "completed_count": 0,
+            "completion_percentage": 0.0
+        }
+        result = habits_collection.insert_one(entry)
+        entry['_id'] = str(result.inserted_id)
+        logger.info(f"Created new habits entry for {user_name} on {date_str}")
+        return jsonify({"message": "Habits entry created", "entry": entry}), 201
+    except Exception as e:
+        logger.error(f"Error adding habits: {e}")
+        return jsonify({"error": "Internal server error occurred while adding habit"}), 500
 
 @app.route('/api/habits', methods=['GET'])
 def get_habits():
