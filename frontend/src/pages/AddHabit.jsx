@@ -32,6 +32,12 @@ const AddHabit = ({ userName }) => {
 
   const handleSubmit = async () => {
     if(!date || habits.length === 0) return toast.error('Add at least one habit');
+
+    // VERY CLEAR ERROR FOR PRODUCTION
+    if (API_BASE.includes('localhost') && window.location.hostname !== 'localhost') {
+        return toast.error("CRITICAL ERROR: Your frontend is deployed, but it doesn't know where the backend is! You MUST add VITE_API_BASE to your Frontend Render Environment Variables.", { duration: 10000 });
+    }
+
     const loadingToast = toast.loading('Scheduling routine...');
     try {
       await axios.post(`${API_BASE}/habits`, {
@@ -45,7 +51,7 @@ const AddHabit = ({ userName }) => {
     } catch(err) {
       toast.dismiss(loadingToast);
       const errMsg = err.response?.data?.error || err.message || 'Failed to connect to backend';
-      toast.error(`Error: ${errMsg}`, { duration: 5000 });
+      toast.error(`Error: ${errMsg}. Backend URL: ${API_BASE}`, { duration: 8000 });
       console.error("AddHabit error details:", err);
     }
   };
