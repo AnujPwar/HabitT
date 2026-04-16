@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+backend/venv/
+frontend/node_modules/
+frontend/dist/
+
+# Environment Variables
+.env
+backend/.env
+frontend/.env
+
+# Python
+__pycache__/
+*.pyc
+backend/__pycache__/
+
+# Logs
+*.log
+frontend/build_error.log
+frontend/build_error.txt
+frontend/build_result.txt
+
+# OS stuff
+.DS_Store
+Thumbs.db
