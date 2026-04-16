@@ -42,7 +42,10 @@ function App() {
     if(userName) {
       axios.post(`${API_BASE}/user/sync`, { user_name: userName })
         .then(res => setUserStats(res.data.user))
-        .catch(err => console.error(err));
+        .catch(err => {
+          console.error("Sync Error:", err.message);
+          if (err.response) console.error("Sync Response Error:", err.response.data);
+        });
     }
   }, [userName]);
 

@@ -32,16 +32,21 @@ const AddHabit = ({ userName }) => {
 
   const handleSubmit = async () => {
     if(!date || habits.length === 0) return toast.error('Add at least one habit');
+    const loadingToast = toast.loading('Scheduling routine...');
     try {
       await axios.post(`${API_BASE}/habits`, {
         user_name: userName,
         date: date,
         habits: habits
       });
+      toast.dismiss(loadingToast);
       toast.success('Routine Scheduled!');
       navigate('/');
     } catch(err) {
-      toast.error('Failed to create route');
+      toast.dismiss(loadingToast);
+      const errMsg = err.response?.data?.error || err.message || 'Failed to connect to backend';
+      toast.error(`Error: ${errMsg}`, { duration: 5000 });
+      console.error("AddHabit error details:", err);
     }
   };
 

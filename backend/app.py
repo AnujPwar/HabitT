@@ -16,23 +16,28 @@ load_dotenv() # Load variables from .env
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
-CORS(app) # Allow all origins for now
+
+# More robust CORS for production
+CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 
 MONGO_URI = os.environ.get('MONGO_URI')
 if not MONGO_URI:
     logger.warning("MONGO_URI not found in environment variables. Using localhost default.")
     MONGO_URI = 'mongodb://localhost:27017/'
 
+db_connected = False
 try:
-    client = MongoClient(MONGO_URI)
+    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
     db = client['habit_tracker_db']
     habits_collection = db['habits']
     users_collection = db['users']
     # Trigger a connection check
-    client.server_info()
+    client.admin.command('ping')
+    db_connected = True
     logger.info("Successfully connected to MongoDB")
 except Exception as e:
-    logger.error(f"Could not connect to MongoDB: {e}")
+    logger.error(f"CRITICAL: Could not connect to MongoDB: {e}")
+    db_connected = False
 
 def serialize_doc(doc):
     if doc and '_id' in doc:
@@ -123,6 +128,8 @@ def sync_user():
 
 @app.route('/api/habits', methods=['POST'])
 def add_habits_entry():
+    if not db_connected:
+        return jsonify({"error": "Backend is live but cannot connect to Database. Check your MONGO_URI and MongoDB whitelisting."}), 503
     try:
         data = request.json
         logger.info(f"Received request to add habit: {data}")
